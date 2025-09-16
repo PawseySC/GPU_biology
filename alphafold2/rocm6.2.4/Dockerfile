@@ -75,5 +75,4 @@ RUN sed -i 's/from simtk.openmm.app.internal.pdbstructure import PdbStructure/fr
     /app/alphafold/alphafold/relax/amber_minimize.py && \
 	find /app/alphafold -type f -name "*.py" -exec sed -i \
     's/simtk\.unit/openmm.unit/g' {} +
-RUN mamba clean -afy
 WORKDIR /app/alphafold
