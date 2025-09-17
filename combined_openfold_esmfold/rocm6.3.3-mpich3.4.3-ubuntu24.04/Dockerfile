@@ -3,10 +3,10 @@ FROM quay.io/pawsey/rocm-mpich-base:rocm6.3.3-mpich3.4.3-ubuntu24.04
 RUN apt-get update && \
     apt install apt-transport-https -y && \
     apt-get install -y \
-    build-essential \
-    wget \
-    git \
-    libxml2 \	
+	build-essential \
+	wget \
+	git \
+	libxml2 \	
     aria2 \
     gcc \
     g++ \
@@ -96,10 +96,13 @@ RUN mkdir -p tests/test_data/alphafold/common && \
 WORKDIR /opt/openfold
 COPY nocuda_setup.py .
 RUN python nocuda_setup.py install && rm /opt/openfold/openfold/utils/kernel/attention_core.py
-COPY amd_attention_core.py openfold/utils/kernel/attention_core.py
+COPY amd_attention_core.py /opt/openfold/openfold/utils/kernel/attention_core.py
+COPY amd_attention_core.py /opt/miniforge3/lib/python3.9/site-packages/openfold/utils/kernel/attention_core.py
 COPY amd_attention_core.py /opt/miniforge3/envs/py_3.9/lib/python3.9/site-packages/openfold-1.0.1-py3.9.egg/openfold/utils/kernel/attention_core.py
 COPY openfold_structure_module.py /opt/openfold/openfold/model/structure_module.py
-COPY esmfold_structure_module.py /opt/miniforge3/envs/py_3.9/lib/python3.9/site-packages/openfold-1.0.1-py3.9.egg/openfold/model/structure_module.py
+COPY openfold_structure_module.py /opt/miniforge3/lib/python3.9/site-packages/openfold/model/structure_module.py
+COPY openfold_structure_module.py /opt/miniforge3/envs/py_3.9/lib/python3.9/site-packages/openfold-1.0.1-py3.9.egg/openfold/model/structure_module.py
+RUN sed -i 's/deepspeed\.utils\.is_initialized()/deepspeed.comm.comm.is_initialized()/g' /opt/miniforge3/lib/python3.9/site-packages/openfold/model/primitives.py
 
 # Install ESMFold dependencies
 RUN	pip install --no-cache-dir git+https://github.com/facebookresearch/esm.git
