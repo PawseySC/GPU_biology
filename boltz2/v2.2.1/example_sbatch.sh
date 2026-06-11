@@ -11,7 +11,7 @@
 module load singularity/3.11.4-mpi
 
 # Set container
-containerImage=boltzv2.1.1_rocm6.4.sif
+containerImage=boltz2_v2.2.1_rocm6.4.sif
 # Set input dir
 INPUTDIR=$MYSCRATCH/boltz/inputs
 
@@ -20,7 +20,7 @@ OUTDIR=$MYSCRATCH/boltz/${SLURM_JOB_ID}
 mkdir -p ${OUTDIR}
 
 # Set cache directory
-CACHEDIR=$MYSCRATCH/boltz/cache
+CACHEDIR=/scratch/references/boltz
 mkdir -p ${CACHEDIR}
 
 
