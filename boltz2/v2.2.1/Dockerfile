@@ -36,7 +36,6 @@ RUN	pip install -e . --no-cache-dir
 
 COPY Dockerfile pyproject.toml /opt/docker-recipes/
 WORKDIR /opt 
-RUN rm -rf /opt/boltz
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="Boltz2 v.2.2.1 with ROCm 6.4.1 support on Ubuntu 24.04 for AMD GPUs" \
       org.opencontainers.image.source="https://github.com/sarahbeecroft/boltz2/v2.2.1/rocm6.4.1" \
