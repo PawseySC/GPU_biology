@@ -21,8 +21,7 @@ RUN pip config set global.break-system-packages true && \
     pip install --no-cache-dir torch==2.9.1 \
     torchvision==0.24.1 \
     torchaudio==2.9.1 \
-    --index-url https://download.pytorch.org/whl/rocm6.4 && \
-    pip install utils
+    --index-url https://download.pytorch.org/whl/rocm6.4
 
 # Clone boltz release v.2.2.1
 WORKDIR /opt
