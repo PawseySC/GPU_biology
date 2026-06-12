@@ -28,14 +28,12 @@ RUN apt-get update --quiet \
 
 WORKDIR /opt
 
-# Clone alphafold 
 RUN git clone https://github.com/deepmind/alphafold.git /app/alphafold && \
     cd /app/alphafold && \
     git checkout e9b68483fc8764e7a1906e74a5d1f0ea2137311d && \
     wget -q -P /app/alphafold/alphafold/common/ \
     https://git.scicore.unibas.ch/schwede/openstructure/-/raw/7102c63615b64735c4941278d92b554ec94415f8/modules/mol/alg/src/stereo_chemical_props.txt && \
     cd -
-#COPY config.py ${ALPHAFOLD_PATH}/alphafold/model
 
 # Install miniforge (mamba)
 RUN set -eux ; \
@@ -58,6 +56,8 @@ RUN pip3 install -r /app/alphafold/requirements.txt --no-cache-dir --root-user-a
     python3 -m pip install --no-cache-dir --root-user-action=ignore --break-system-packages https://github.com/ROCm/jax/releases/download/rocm-jax-v0.4.34/jax_rocm60_pjrt-0.4.34-py3-none-manylinux_2_28_x86_64.whl https://github.com/ROCm/jax/releases/download/rocm-jax-v0.4.34/jax_rocm60_plugin-0.4.34-cp311-cp311-manylinux_2_28_x86_64.whl && \
     python3 -m pip install --no-cache-dir --root-user-action=ignore --break-system-packages https://github.com/ROCm/jax/archive/refs/tags/rocm-jax-v0.4.34.tar.gz
 
+RUN sed -i 's|tolerance = tolerance \* ENERGY|tolerance = tolerance * ENERGY / unit.nanometer|' \
+    /app/alphafold/alphafold/relax/amber_minimize.py
 WORKDIR /app/alphafold
 
 COPY config.py Dockerfile requirements_msa.txt requirements.txt run_msa.py run_predict.py /opt/docker-recipes/
