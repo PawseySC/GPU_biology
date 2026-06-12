@@ -8,7 +8,7 @@ ENV ROCM_RELEASE 6.2.4
 ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
 ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib:/opt/miniforge3/lib
-ENV JAX_PLATFORMS "rocm"
+ENV JAX_PLATFORMS "rocm,cpu"
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update --quiet \
