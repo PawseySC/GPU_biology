@@ -8,7 +8,7 @@
 # Load required module
 module load singularity/3.11.4-nompi
 REF_DIR='/data/references/alphafold_feb2024/databases'
-INPUT=10.fasta
+INPUT=10aa_dimer.fasta
 
 singularity pull docker://quay.io/pawsey/alphafold2:proteinfold
 CONTAINER_IMAGE=alphafold2_proteinfold.sif
