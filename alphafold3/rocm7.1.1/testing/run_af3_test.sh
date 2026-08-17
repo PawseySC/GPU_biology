@@ -17,7 +17,7 @@ srun -N 1 -n 1 -c 8 --gres=gpu:1 --gpus-per-task=1 \
 singularity exec ${CONTAINER} \
       python3 /app/alphafold3/run_alphafold.py \
       --model_dir=${MODEL_DIR} \
-      --json_path=2pv7_data_${SLURM_ARRAY_TASK_ID}mer.json \
+      --json_path=inputs/2pv7_data_${SLURM_ARRAY_TASK_ID}mer.json \
       --output_dir=af_output_${SLURM_ARRAY_TASK_ID} \
       --num_recycles=3 \
       --num_diffusion_samples=1 \
