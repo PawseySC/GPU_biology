@@ -66,5 +66,5 @@ LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>
       org.opencontainers.image.source="https://github.com/PawseySC/GPU_biology/alphafold2/v2.3.2/rocm6.2.4_proteinfold" \
       org.opencontainers.image.name="alphafold2v2.3.2_rocm6.2.4_proteinfold"
 
-ENV XLA_FLAGS="--xla_gpu_autotune_level=0" 
+ENV XLA_FLAGS='--xla_gpu_enable_command_buffer= --xla_gpu_autotune_level=0'
 ENV HIP_VISIBLE_DEVICES="0"
