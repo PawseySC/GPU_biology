@@ -18,7 +18,7 @@ srun -N 1 -n 1 -c 8 --gres=gpu:1 \
   singularity exec ${CONTAINER_IMAGE} \
   python alphafold/run_alphafold.py \
   --fasta_paths=${INPUT} \
-  --model_preset=monomer \
+  --model_preset=multimer \
   --use_gpu_relax=True \
   --benchmark=False \
   --uniref90_database_path=${REF_DIR}/uniref90/uniref90.fasta \
