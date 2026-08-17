@@ -68,3 +68,4 @@ LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>
 
 ENV XLA_FLAGS='--xla_gpu_enable_command_buffer= --xla_gpu_autotune_level=0'
 ENV HIP_VISIBLE_DEVICES="0"
+ENV ROCR_VISIBLE_DEVICES="0"
