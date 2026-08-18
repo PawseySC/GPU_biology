@@ -12,6 +12,7 @@ mock
 msgpack
 numpy==1.26.4
 OpenMM-HIP-6==8.2.0
+optax==0.2.4
 pandas
 tabulate 
 tensorflow-cpu==2.18.1

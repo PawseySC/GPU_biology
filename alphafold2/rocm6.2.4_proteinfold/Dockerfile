@@ -60,7 +60,7 @@ RUN sed -i 's|tolerance = tolerance \* ENERGY|tolerance = tolerance * ENERGY / u
     /app/alphafold/alphafold/relax/amber_minimize.py
 WORKDIR /app/alphafold
 
-COPY config.py Dockerfile requirements_msa.txt requirements.txt run_msa.py run_predict.py /opt/docker-recipes/
+COPY config.py Dockerfile requirements.txt run_msa.py run_predict.py /opt/docker-recipes/
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="AlphaFold v2.3.2 with ROCm 6.2.4 support on Ubuntu 24.04 for AMD GPUs with some helper scripts to make it work with NF-core ProteinFold pipeline" \
       org.opencontainers.image.source="https://github.com/PawseySC/GPU_biology/alphafold2/v2.3.2/rocm6.2.4_proteinfold" \
