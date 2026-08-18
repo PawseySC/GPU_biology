@@ -8,10 +8,14 @@ the fold container, use ``split_and_fold_segments_alphafold2_single_container.py
 
 Designed for a **standard AlphaFold2 setup**: local database tree and ``run_alphafold.py``
 flags you pass after ``--`` (e.g. ``--data_dir``, ``--model_preset``, ``--db_preset``).
+If you only pass ``--data_dir`` (or use ``--data-dir`` on this script), missing database
+path flags are filled in automatically (same layout as ``alphafold2/scripts/run_af2.sh``).
 Each run writes ``<--af2-output-base>/<fasta_stem>/ranked_*.pdb``; stitching uses those paths.
 
-**Input:** FASTA only (one query sequence). For A2M/A3M or custom MSA flows, use the
-ColabFold orchestrator or run AlphaFold2 yourself per chunk.
+**Input:** FASTA, or A2M/A3M (ColabFold-style MSA). For A3M input the host script
+slices per chunk, converts to AlphaFold ``msas/*.sto`` inside the AF2 container,
+and runs ``run_alphafold.py`` with ``--use_precomputed_msas=true``. FASTA + optional
+``--colabfold-a3m`` uses the same path.
 
 **Layout:** match ``--work-dir`` to a host directory that is bind-mounted as ``/work`` in
 both containers, with databases and outputs under that tree (see repo ``README.md``).
@@ -20,8 +24,12 @@ Example::
 
   python scripts/split_and_fold_segments_alphafold2.py query.fa \\
     --work-dir /data/af2_project \\
-    --alphafold2-container-name my_af2 \\
-    -- --data_dir=/work/databases --model_preset=monomer --db_preset=full_dbs
+    --data-dir /scratch/references/alphafold_feb2024/databases \\
+    --alphafold2-container-name my_af2
+
+  # Or pass only --data_dir after -- (other paths are derived automatically):
+  python scripts/split_and_fold_segments_alphafold2.py query.fa \\
+    --work-dir /data/af2_project -- --data_dir=/work/databases
 
 Forward all ``run_alphafold.py`` arguments after a bare ``--``.
 """
@@ -33,7 +41,8 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from rocm_compute_devices import discover_compute_rocm_gpu_ids
+from rocm_compute_devices import resolve_orchestrator_gpu_ids
+from split_fold_stitch.af2_args import data_dir_from_argv, ensure_singularity_host_bind, resolve_run_alphafold_extra
 from split_fold_stitch.container import (
     ContainerRunner,
     add_alphafold2_container_cli_args,
@@ -41,39 +50,15 @@ from split_fold_stitch.container import (
     container_config_from_args,
     resolve_work_dir,
 )
-from split_fold_stitch.plan import build_plan_json, relativize_plan_paths, write_plan_json
+from split_fold_stitch.plan import build_plan_json, plan_json_path, relativize_plan_paths, write_plan_json
+from split_fold_stitch.af2_msa import (
+    input_uses_precomputed_msas,
+    prepare_dual_container_af2_chunks,
+)
 from split_fold_stitch.tiling import prepare_chunk_inputs
 
 
-def _parse_hip_visible_devices() -> list[int]:
-    raw = os.environ.get("HIP_VISIBLE_DEVICES", "")
-    if not raw.strip():
-        return []
-    out: list[int] = []
-    for part in raw.split(","):
-        p = part.strip()
-        if not p:
-            continue
-        try:
-            out.append(int(p))
-        except ValueError:
-            pass
-    return out
-
-
-def _init_gpu_ids() -> list[int]:
-    if "HIP_VISIBLE_DEVICES" in os.environ:
-        return _parse_hip_visible_devices()
-    return discover_compute_rocm_gpu_ids()
-
-
-GPU_IDS = _init_gpu_ids()
-if not GPU_IDS:
-    print(
-        "Warning: no GPU indices (empty HIP_VISIBLE_DEVICES?); using [0].",
-        file=sys.stderr,
-    )
-    GPU_IDS = [0]
+GPU_IDS = resolve_orchestrator_gpu_ids()
 
 
 def _af2_pred_dirs(output_base: str, chunk_fastas: list[str]) -> list[str]:
@@ -139,6 +124,7 @@ def _run_pymol_stage(
     stitch_modes: list[str],
     validate_adjacent_segments: bool,
     work_dir: str,
+    plan_mode: str = "default",
 ) -> None:
     plan_dir = os.path.join(work_dir, ".split_fold_stitch")
     os.makedirs(plan_dir, exist_ok=True)
@@ -150,7 +136,7 @@ def _run_pymol_stage(
             print(
                 f"\n### Pre-stitch validation (anchor: primary {mo}, secondary {other}) ###\n"
             )
-            plan_path = os.path.join(plan_dir, f"validate_{mo}.json")
+            plan_path = plan_json_path(plan_dir, base, "validate", mo)
             write_plan_json(
                 plan_path,
                 relativize_plan_paths(
@@ -160,6 +146,7 @@ def _run_pymol_stage(
                         out_dirs=pred_dirs,
                         anchor_primary=mo,
                         fold_backend=fb,
+                        plan_mode=plan_mode,
                     ),
                     work_dir,
                 ),
@@ -171,7 +158,7 @@ def _run_pymol_stage(
     for mo in stitch_modes:
         out_pdb = f"{base}_stitched_{mo}.pdb"
         print(f"\n### Stitch: anchor policy {mo} -> {out_pdb} ###\n")
-        plan_path = os.path.join(plan_dir, f"stitch_{mo}.json")
+        plan_path = plan_json_path(plan_dir, base, "stitch", mo)
         write_plan_json(
             plan_path,
             relativize_plan_paths(
@@ -182,6 +169,7 @@ def _run_pymol_stage(
                     output_pdb=out_pdb,
                     anchor_primary=mo,
                     fold_backend=fb,
+                    plan_mode=plan_mode,
                 ),
                 work_dir,
             ),
@@ -190,7 +178,7 @@ def _run_pymol_stage(
         if rc != 0:
             raise SystemExit(f"PyMOL stitch failed (exit {rc}) for mode {mo!r}.")
 
-    summary_plan = os.path.join(plan_dir, "summary.json")
+    summary_plan = plan_json_path(plan_dir, base, "summary")
     write_plan_json(
         summary_plan,
         relativize_plan_paths(
@@ -200,6 +188,7 @@ def _run_pymol_stage(
                 out_dirs=pred_dirs,
                 modes=stitch_modes,
                 fold_backend=fb,
+                plan_mode=plan_mode,
             ),
             work_dir,
         ),
@@ -274,24 +263,42 @@ def main(
     skip_alphafold: bool = False,
     validate_adjacent_segments: bool = False,
     max_chunk_aa: int | None = None,
+    plan_mode: str = "default",
     run_alphafold_extra: list[str] | None = None,
     af2_gpu_slot: int = 0,
+    colabfold_a3m: str | None = None,
 ) -> None:
     seq_input = os.path.abspath(seq_input)
-    base, _header, msa_in, chunks, chunk_files, _cf_out_dirs, one_segment = (
-        prepare_chunk_inputs(seq_input, max_chunk_aa=max_chunk_aa)
-    )
-    if msa_in:
-        raise SystemExit(
-            "This script accepts FASTA only. Use split_and_fold_segments_colabfold.py "
-            "for ColabFold (FASTA or A3M), or run run_alphafold.py per chunk with your own MSA setup."
+    base, _header, msa_in, chunks, chunk_files, _cf_out_dirs, one_segment, plan_mode_used = (
+        prepare_chunk_inputs(
+            seq_input, max_chunk_aa=max_chunk_aa, plan_mode=plan_mode
         )
+    )
 
     output_base = os.path.abspath(af2_output_base)
     os.makedirs(output_base, exist_ok=True)
-    pred_dirs = _af2_pred_dirs(output_base, chunk_files)
 
-    abs_paths = [seq_input, *chunk_files, output_base, *pred_dirs]
+    use_a3m_msas = input_uses_precomputed_msas(seq_input, colabfold_a3m)
+    if use_a3m_msas:
+        chunk_fastas = prepare_dual_container_af2_chunks(
+            runner,
+            seq_input=seq_input,
+            base=base,
+            msa_in=msa_in,
+            colabfold_a3m=colabfold_a3m,
+            chunks=chunks,
+            chunk_files=chunk_files,
+            one_segment=one_segment,
+            output_base=output_base,
+        )
+        if not skip_alphafold:
+            print("-> Using precomputed MSAs from A3M (converted to msas/*.sto per chunk).")
+    else:
+        chunk_fastas = list(chunk_files)
+
+    pred_dirs = _af2_pred_dirs(output_base, chunk_fastas)
+
+    abs_paths = [seq_input, *chunk_fastas, output_base, *pred_dirs]
     work_dir = resolve_work_dir(runner.config.work_dir, *abs_paths)
     runner.config.work_dir = work_dir
     runner.work_dir = work_dir
@@ -300,7 +307,7 @@ def main(
 
     _run_af2_stage(
         runner,
-        chunk_files,
+        chunk_fastas,
         pred_dirs,
         output_base,
         skip_alphafold,
@@ -333,24 +340,25 @@ def main(
         stitch_modes=mode_list,
         validate_adjacent_segments=validate_adjacent_segments,
         work_dir=work_dir,
+        plan_mode=plan_mode_used,
     )
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(
         description=(
-            "Split FASTA, fold segments (AlphaFold2 container), stitch (PyMOL container)."
+            "Split FASTA or A2M/A3M, fold segments (AlphaFold2 container), stitch (PyMOL container)."
         ),
         epilog=(
-            "Required run_alphafold.py flags (after --) depend on your image; typical full-DB "
-            "run: --data_dir=/work/databases --model_preset=monomer --db_preset=full_dbs "
-            "plus database path flags as in AlphaFold2 docs."
+            "If run_alphafold.py flags after -- omit database paths, they are derived from "
+            "--data-dir (default: ALPHAFOLD_DATA_DIR or /work/databases). Override individual "
+            "paths by passing them after --. Typical full-DB run also sets --db_preset=full_dbs."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "input",
-        help="input FASTA (single query); long sequences are tiled automatically.",
+        help="input FASTA or A2M/A3M (single query); long sequences are tiled automatically.",
     )
     p.add_argument(
         "--af2-output-base",
@@ -387,6 +395,15 @@ if __name__ == "__main__":
         help="max residues per segment (default: 3012, same tiling as ColabFold script).",
     )
     p.add_argument(
+        "--plan-mode",
+        choices=("default", "balanced"),
+        default="default",
+        help=(
+            "tiling policy: default uses fixed ~3000 aa windows; balanced shrinks the first "
+            "window when one segment would dominate the stitched model (e.g. 3013 aa)."
+        ),
+    )
+    p.add_argument(
         "--af2-gpu-slot",
         type=int,
         default=0,
@@ -397,7 +414,44 @@ if __name__ == "__main__":
             "Multi-chunk runs assign chunk i to GPU_IDS[(K + i) %% n_gpus]."
         ),
     )
-    add_container_cli_args(p)
+    p.add_argument(
+        "--colabfold-a3m",
+        default=os.environ.get("COLABFOLD_A3M"),
+        metavar="PATH",
+        help=(
+            "ColabFold .a3m for the full query (env COLABFOLD_A3M). With FASTA input, "
+            "each chunk gets column-sliced msas/*.sto for --use_precomputed_msas."
+        ),
+    )
+    p.add_argument(
+        "--data-dir",
+        default=os.environ.get("ALPHAFOLD_DATA_DIR", "/work/databases"),
+        metavar="DIR",
+        help=(
+            "AlphaFold database root (--data_dir). When run_alphafold.py flags after -- omit "
+            "database paths, they are derived from this tree (same layout as run_af2.sh)."
+        ),
+    )
+    p.add_argument(
+        "--db-preset",
+        choices=("full_dbs", "reduced_dbs"),
+        default="reduced_dbs",
+        help="run_alphafold.py --db_preset when not set after -- (default: reduced_dbs).",
+    )
+    p.add_argument(
+        "--use-precomputed-msas",
+        dest="use_precomputed_msas",
+        action="store_true",
+        default=None,
+        help="set --use_precomputed_msas=true (default for FASTA-only runs: false).",
+    )
+    p.add_argument(
+        "--no-use-precomputed-msas",
+        dest="use_precomputed_msas",
+        action="store_false",
+        help="set --use_precomputed_msas=false (Jackhmmer genetic search).",
+    )
+    add_container_cli_args(p, container_only=True)
     add_alphafold2_container_cli_args(p)
 
     try:
@@ -410,12 +464,38 @@ if __name__ == "__main__":
 
     a = p.parse_args()
     seq_input = os.path.abspath(a.input)
+    colabfold_a3m = os.path.abspath(a.colabfold_a3m) if a.colabfold_a3m else None
+    if colabfold_a3m and not os.path.isfile(colabfold_a3m):
+        raise SystemExit(f"--colabfold-a3m not found: {colabfold_a3m!r}")
+    if input_uses_precomputed_msas(seq_input, colabfold_a3m):
+        if a.use_precomputed_msas is False:
+            raise SystemExit(
+                "A3M input (or --colabfold-a3m) requires precomputed MSAs; "
+                "omit --no-use-precomputed-msas or pass --use-precomputed-msas."
+            )
+        if a.use_precomputed_msas is None:
+            a.use_precomputed_msas = True
     work_dir = resolve_work_dir(a.work_dir, seq_input)
     if a.af2_output_base:
         af2_out = os.path.abspath(a.af2_output_base)
     else:
         af2_out = os.path.join(work_dir, "af2_predictions")
-    cfg = container_config_from_args(a, work_dir)
+    cfg = container_config_from_args(a, work_dir, container_only=True)
+    run_alphafold_extra = resolve_run_alphafold_extra(
+        run_alphafold_extra,
+        data_dir=a.data_dir,
+        db_preset=a.db_preset,
+        use_precomputed_msas=a.use_precomputed_msas,
+    )
+    if cfg.runtime.lower() in ("singularity", "apptainer"):
+        af2_data_dir = data_dir_from_argv(run_alphafold_extra) or os.path.abspath(a.data_dir)
+        bind = ensure_singularity_host_bind(
+            cfg.singularity_bind, af2_data_dir, work_dir
+        )
+        if bind:
+            print(
+                f"-> Singularity bind (AlphaFold databases outside --work-dir): {bind}"
+            )
     runner = ContainerRunner(cfg)
 
     print(
@@ -423,6 +503,8 @@ if __name__ == "__main__":
         f"{cfg.alphafold2_container_name or cfg.alphafold2_sif or cfg.alphafold2_image} "
         f"(app {cfg.alphafold2_app_root}) | PyMOL: {cfg.pymol_sif or cfg.pymol_image}"
     )
+    if run_alphafold_extra:
+        print(f"-> run_alphafold.py extra flags: {' '.join(run_alphafold_extra)}")
 
     main(
         seq_input,
@@ -432,6 +514,8 @@ if __name__ == "__main__":
         skip_alphafold=a.skip_alphafold,
         validate_adjacent_segments=a.validate_adjacent_segments,
         max_chunk_aa=a.max_chunk_aa,
+        plan_mode=a.plan_mode,
         run_alphafold_extra=run_alphafold_extra,
         af2_gpu_slot=a.af2_gpu_slot,
+        colabfold_a3m=colabfold_a3m,
     )

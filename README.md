@@ -2,6 +2,8 @@
 
 ROCm-oriented **Dockerfiles** and small **host scripts** for structural biology tools on AMD GPUs (e.g. MI250X). This repo is meant to be shared as a **minimal, self-contained baseline**: build or pull images, bind-mount a working directory, run.
 
+**Quick start:** copy-paste commands for Setonix / Singularity are in **[QUICKSTART.md](QUICKSTART.md)** (long-sequence ColabFold and AlphaFold2 split–fold–stitch). Everything below is the full reference.
+
 ## Layout
 
 | Path | Purpose |
@@ -94,7 +96,7 @@ For environments where you **do not** mirror the full archive but still want **i
 
 ### C) ColabFold MSAs → AlphaFold2 fold (smallest combined footprint; optional)
 
-Use this only when you want **minimal disk** and are willing to use repo helpers at **`/work/af2_scripts`** (bind-mounted by **`scripts/alphafold2_docker_run.sh`** by default; not baked into published images). For **`full_dbs`**, skip **`alphafold2/scripts/`** and run **`run_alphafold.py`** directly.
+Use this only when you want **minimal disk** and are willing to use repo helpers at **`/gpu_biology/alphafold2/scripts`** (bind-mounted by **`scripts/alphafold2_docker_run.sh`** by default; legacy alias **`/work/af2_scripts`**). For **`full_dbs`**, skip **`alphafold2/scripts/`** and run **`run_alphafold.py`** directly.
 
 Use ColabFold for **MSA generation** (reduced **`/cache`** as above), then AlphaFold2 for **prediction** without AF2 genetic DBs:
 

@@ -4,24 +4,27 @@ ColabFold split-fold-stitch (host orchestrator). For AlphaFold2 use ``split_and_
 
 Split a long FASTA/A3M, fold segments with ColabFold, stitch with PyMOL.
 
-Runs from the **host** and orchestrates separate container backends:
+Runs from the **host** and always invokes **ColabFold inside a container** (Docker or
+Singularity). It does not run ``colabfold_batch`` on the host Python environment.
 
   - ColabFold: ``quay.io/pawsey/colabfold:rocm6.2.4`` (Docker) or a .sif (Singularity)
   - PyMOL: ``jysgro/pymol:deb12-2.5.0_sc`` (Docker) or a .sif (Singularity)
 
-Example (Docker, default):
+Example (Singularity on HPC / Setonix):
 
-  python scripts/split_and_fold_segments_colabfold.py query.fa \\
-    --work-dir /home/me/colabfold_work \\
-    --colabfold-cache /home/me/colabfold_cache
-
-Example (Singularity on HPC):
-
+  module load singularity/3.11.4-nompi
   python scripts/split_and_fold_segments_colabfold.py query.fa \\
     --runtime singularity \\
     --colabfold-sif /path/to/colabfold_rocm6.2.4.sif \\
     --pymol-sif /path/to/pymol.sif \\
     --work-dir $PWD
+
+Example (Docker):
+
+  python scripts/split_and_fold_segments_colabfold.py query.fa \\
+    --runtime docker \\
+    --work-dir /home/me/colabfold_work \\
+    --colabfold-cache /home/me/colabfold_cache
 
 Re-stitch only (fold outputs already present):
 
@@ -39,7 +42,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from rocm_compute_devices import discover_compute_rocm_gpu_ids
+from rocm_compute_devices import resolve_orchestrator_gpu_ids
 from split_fold_stitch.container import (
     ContainerConfig,
     ContainerRunner,
@@ -47,46 +50,14 @@ from split_fold_stitch.container import (
     container_config_from_args,
     resolve_work_dir,
 )
-from split_fold_stitch.plan import build_plan_json, relativize_plan_paths, write_plan_json
+from split_fold_stitch.plan import build_plan_json, plan_json_path, relativize_plan_paths, write_plan_json
 from split_fold_stitch.tiling import (
     colabfold_msa_input_fail_hint,
     prepare_chunk_inputs,
 )
 
 
-def _parse_hip_visible_devices() -> list[int]:
-    raw = os.environ.get("HIP_VISIBLE_DEVICES", "")
-    if not raw.strip():
-        return []
-    out: list[int] = []
-    for part in raw.split(","):
-        p = part.strip()
-        if not p:
-            continue
-        try:
-            out.append(int(p))
-        except ValueError:
-            pass
-    return out
-
-
-def _discover_gpu_ids() -> list[int]:
-    return discover_compute_rocm_gpu_ids()
-
-
-def _init_gpu_ids() -> list[int]:
-    if "HIP_VISIBLE_DEVICES" in os.environ:
-        return _parse_hip_visible_devices()
-    return _discover_gpu_ids()
-
-
-GPU_IDS = _init_gpu_ids()
-if not GPU_IDS:
-    print(
-        "Warning: no GPU indices (empty HIP_VISIBLE_DEVICES?); using [0].",
-        file=sys.stderr,
-    )
-    GPU_IDS = [0]
+GPU_IDS = resolve_orchestrator_gpu_ids()
 
 
 def _run_one_colabfold_chunk(
@@ -239,6 +210,7 @@ def _run_pymol_stage(
     stitch_modes: list[str],
     validate_adjacent_segments: bool,
     work_dir: str,
+    plan_mode: str = "default",
 ) -> None:
     plan_dir = os.path.join(work_dir, ".split_fold_stitch")
     os.makedirs(plan_dir, exist_ok=True)
@@ -249,7 +221,7 @@ def _run_pymol_stage(
             print(
                 f"\n### Pre-stitch validation (anchor: primary {mo}, secondary {other}) ###\n"
             )
-            plan_path = os.path.join(plan_dir, f"validate_{mo}.json")
+            plan_path = plan_json_path(plan_dir, base, "validate", mo)
             write_plan_json(
                 plan_path,
                 relativize_plan_paths(
@@ -259,6 +231,7 @@ def _run_pymol_stage(
                         out_dirs=out_dirs,
                         anchor_primary=mo,
                         fold_backend="colabfold",
+                        plan_mode=plan_mode,
                     ),
                     work_dir,
                 ),
@@ -270,7 +243,7 @@ def _run_pymol_stage(
     for mo in stitch_modes:
         out_pdb = f"{base}_stitched_{mo}.pdb"
         print(f"\n### Stitch: anchor policy {mo} -> {out_pdb} ###\n")
-        plan_path = os.path.join(plan_dir, f"stitch_{mo}.json")
+        plan_path = plan_json_path(plan_dir, base, "stitch", mo)
         write_plan_json(
             plan_path,
             relativize_plan_paths(
@@ -281,6 +254,7 @@ def _run_pymol_stage(
                     output_pdb=out_pdb,
                     anchor_primary=mo,
                     fold_backend="colabfold",
+                    plan_mode=plan_mode,
                 ),
                 work_dir,
             ),
@@ -289,7 +263,7 @@ def _run_pymol_stage(
         if rc != 0:
             raise SystemExit(f"PyMOL stitch failed (exit {rc}) for mode {mo!r}.")
 
-    summary_plan = os.path.join(plan_dir, "summary.json")
+    summary_plan = plan_json_path(plan_dir, base, "summary")
     write_plan_json(
         summary_plan,
         relativize_plan_paths(
@@ -299,6 +273,7 @@ def _run_pymol_stage(
                 out_dirs=out_dirs,
                 modes=stitch_modes,
                 fold_backend="colabfold",
+                plan_mode=plan_mode,
             ),
             work_dir,
         ),
@@ -314,11 +289,14 @@ def main(
     skip_colabfold: bool = False,
     validate_adjacent_segments: bool = False,
     max_chunk_aa: int | None = None,
+    plan_mode: str = "default",
     colabfold_batch_extra: list[str] | None = None,
 ) -> None:
     seq_input = os.path.abspath(seq_input)
-    base, _header, msa_in, chunks, chunk_files, out_dirs, one_segment = (
-        prepare_chunk_inputs(seq_input, max_chunk_aa=max_chunk_aa)
+    base, _header, msa_in, chunks, chunk_files, out_dirs, one_segment, plan_mode_used = (
+        prepare_chunk_inputs(
+            seq_input, max_chunk_aa=max_chunk_aa, plan_mode=plan_mode
+        )
     )
 
     abs_paths = [seq_input, *chunk_files, *out_dirs]
@@ -362,6 +340,7 @@ def main(
         stitch_modes=mode_list,
         validate_adjacent_segments=validate_adjacent_segments,
         work_dir=work_dir,
+        plan_mode=plan_mode_used,
     )
 
 
@@ -421,7 +400,17 @@ if __name__ == "__main__":
             "overlap is chosen automatically and may be < 1000 aa."
         ),
     )
-    add_container_cli_args(p)
+    p.add_argument(
+        "--plan-mode",
+        choices=("default", "balanced"),
+        default="default",
+        help=(
+            "tiling policy: default uses fixed ~3000 aa windows; balanced shrinks the first window "
+            "when one segment would dominate the stitched model (e.g. 3013 aa just above the "
+            "3000 aa OOM cap). Ignored for single-segment inputs."
+        ),
+    )
+    add_container_cli_args(p, container_only=True)
 
     try:
         i = sys.argv.index("--", 1)
@@ -434,7 +423,7 @@ if __name__ == "__main__":
     a = p.parse_args()
     seq_input = os.path.abspath(a.input)
     work_dir = resolve_work_dir(a.work_dir, seq_input)
-    cfg = container_config_from_args(a, work_dir)
+    cfg = container_config_from_args(a, work_dir, container_only=True)
     runner = ContainerRunner(cfg)
 
     print(
@@ -450,5 +439,6 @@ if __name__ == "__main__":
         skip_colabfold=a.skip_colabfold,
         validate_adjacent_segments=a.validate_adjacent_segments,
         max_chunk_aa=a.max_chunk_aa,
+        plan_mode=a.plan_mode,
         colabfold_batch_extra=colabfold_batch_extra,
     )

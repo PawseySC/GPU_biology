@@ -18,63 +18,14 @@ _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 from split_fold_stitch.jax_rocm_env import jax_xla_env_for_fold_subprocess
+from split_fold_stitch.tiling import plan_tiling, print_chunk_plan as print_tiling_plan
+from rocm_compute_devices import resolve_orchestrator_gpu_ids
 
 # Tie-breaks for pLDDT (primary) vs RMSD (secondary) window selection
 _PDDT_TIE: float = 1e-4
 _RMSD_TIE: float = 1e-6
 
-def _parse_hip_visible_devices() -> list[int]:
-    """
-    Comma-separated integers, e.g. 0,1,2. Invalid tokens are skipped; empty
-    or whitespace-only value yields [].
-    """
-    raw = os.environ.get("HIP_VISIBLE_DEVICES", "")
-    if not raw.strip():
-        return []
-    out: list[int] = []
-    for part in raw.split(","):
-        p = part.strip()
-        if not p:
-            continue
-        try:
-            out.append(int(p))
-        except ValueError:
-            pass
-    return out
-
-def _discover_gpu_ids() -> list[int]:
-    """All GPUs: count of GUID lines in `rocm-smi -i` (no HIP set in the parent)."""
-    try:
-        out = subprocess.check_output(
-            "rocm-smi -i|grep GUID|wc -l",
-            shell=True,
-            text=True,
-            stderr=subprocess.STDOUT,
-            timeout=30,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return [0]
-    try:
-        n = int(out.strip())
-    except ValueError:
-        return [0]
-    if n > 0:
-        return list(range(n))
-    return [0]
-
-def _init_gpu_ids() -> list[int]:
-    if "HIP_VISIBLE_DEVICES" in os.environ:
-        return _parse_hip_visible_devices()
-    return _discover_gpu_ids()
-
-# Honor HIP in the parent environment; else enumerate devices via rocm-smi; else a single GCD
-GPU_IDS = _init_gpu_ids()
-if not GPU_IDS:
-    print(
-        "Warning: no GPU indices (empty HIP_VISIBLE_DEVICES?); using [0].",
-        file=sys.stderr,
-    )
-    GPU_IDS = [0]
+GPU_IDS = resolve_orchestrator_gpu_ids()
 
 # Tiling: max ~3000 aa per ColabFold run, 1000 aa overlap so consecutive windows share
 # the same stretch (1-based: 1–3000 and 2001–5005 for 5005 aa, overlap 2001–3000).
@@ -1047,6 +998,7 @@ def main(
     skip_colabfold: bool = False,
     validate_adjacent_segments: bool = False,
     max_chunk_aa: int | None = None,
+    plan_mode: str = "default",
     colabfold_batch_extra: list[str] | None = None,
 ) -> None:
     ext = _chunk_file_extension(seq_input)
@@ -1068,18 +1020,17 @@ def main(
         raise SystemExit(
             f"max-chunk-aa ({mca}) is too small; use at least ~{ANCHOR_SLIDE * 2} for overlap/anchors."
         )
-    tw, tov = _tiling_window_overlap(mca)
-
-    # 1. Tiling plan. For A2M/A3M, length is in **match states** (HH a3m blocks), not
-    # raw first-line character count when inserts exist.
-    chunks = get_chunks(total_len, max_chunk_aa=mca)
+    chunks, tw, tov, mode_used = plan_tiling(
+        total_len, max_chunk_aa=mca, plan_mode=plan_mode
+    )
     validate_chunk_plan(
         chunks, total_len, max_chunk_aa=mca, min_adjacent_overlap=tov
     )
-    print_chunk_plan(chunks)
-    if mca != MAX_CHUNK_AA or len(chunks) > 1:
+    print_tiling_plan(chunks, plan_mode=mode_used)
+    if mca != MAX_CHUNK_AA or len(chunks) > 1 or mode_used != "default":
         print(
-            f"  (tiling: max {mca} aa per segment, window {tw} aa, adjacent overlap {tov} aa)"
+            f"  (tiling: max {mca} aa per segment, window {tw} aa, "
+            f"adjacent overlap {tov} aa, plan mode {mode_used})"
         )
     if msa_in and len(chunks) == 1 and max_chunk_aa is None:
         print(
@@ -1206,6 +1157,16 @@ if __name__ == "__main__":
             "overlap is chosen automatically and may be < 1000 aa."
         ),
     )
+    p.add_argument(
+        "--plan-mode",
+        choices=("default", "balanced"),
+        default="default",
+        help=(
+            "tiling policy: default uses fixed ~3000 aa windows; balanced shrinks the first window "
+            "when one segment would dominate the stitched model (e.g. 3013 aa just above the "
+            "3000 aa OOM cap)."
+        ),
+    )
     # Tokens after a standalone `--` are not parsed here; they are passed to colabfold_batch verbatim.
     try:
         i = sys.argv.index("--", 1)
@@ -1222,5 +1183,6 @@ if __name__ == "__main__":
         skip_colabfold=a.skip_colabfold,
         validate_adjacent_segments=a.validate_adjacent_segments,
         max_chunk_aa=a.max_chunk_aa,
+        plan_mode=a.plan_mode,
         colabfold_batch_extra=colabfold_batch_extra,
     )
