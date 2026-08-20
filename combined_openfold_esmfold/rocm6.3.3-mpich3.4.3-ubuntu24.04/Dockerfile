@@ -106,3 +106,7 @@ RUN sed -i 's/deepspeed\.utils\.is_initialized()/deepspeed.comm.comm.is_initiali
 
 # Install ESMFold dependencies
 RUN	pip install --no-cache-dir git+https://github.com/facebookresearch/esm.git
+
+ENV TORCH_HOME /scratch/references/esmfold/models 
+ENV TRITON_CACHE_DIR=/tmp/triton_cache
+ENV XDG_CACHE_HOME=/tmp
