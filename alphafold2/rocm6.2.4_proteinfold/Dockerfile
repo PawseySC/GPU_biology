@@ -58,9 +58,14 @@ RUN pip3 install -r /app/alphafold/requirements.txt --no-cache-dir --root-user-a
 
 RUN sed -i 's|tolerance = tolerance \* ENERGY|tolerance = tolerance * ENERGY / unit.nanometer|' \
     /app/alphafold/alphafold/relax/amber_minimize.py
+
+# bfloat16 is disabled in this config: the ROCm 6.2.4 LLVM backend cannot select
+# the i1 -> bf16 conversion that the multimer model emits, aborting at compile time.
+COPY config.py /app/alphafold/alphafold/model/config.py
+
 WORKDIR /app/alphafold
 
-COPY config.py Dockerfile requirements_msa.txt requirements.txt run_msa.py run_predict.py /opt/docker-recipes/
+COPY config.py Dockerfile requirements.txt run_msa.py run_predict.py /opt/docker-recipes/
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="AlphaFold v2.3.2 with ROCm 6.2.4 support on Ubuntu 24.04 for AMD GPUs with some helper scripts to make it work with NF-core ProteinFold pipeline" \
       org.opencontainers.image.source="https://github.com/PawseySC/GPU_biology/alphafold2/v2.3.2/rocm6.2.4_proteinfold" \
