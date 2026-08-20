@@ -62,6 +62,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 ENV OPENMM_PLATFORM_ORDER=HIP,OpenCL,CPU \
     OPENMM_DEFAULT_PLATFORM=HIP
+ENV XLA_FLAGS='--xla_gpu_enable_command_buffer= --xla_gpu_autotune_level=0'
+ENV AMD_COMGR_CACHE_DIR=/tmp/amd_comgr_cache
 
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="FreeBindCraft v1.0.5, no PyRosetta with ROCm7.0.2 support on Ubuntu 24.04 for AMD GPUs" \
