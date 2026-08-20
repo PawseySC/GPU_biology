@@ -107,4 +107,4 @@ RUN cd miniprot && make
 ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/EvidencePipeline/EvidencePipeline/scripts/:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/hisat2-2.2.1/:/opt/stringtie-3.0.3.Linux_x86_64:/opt/sratoolkit.3.3.0-ubuntu64/bin/:/opt/gffread-0.12.7.Linux_x86_64
 
 RUN mkdir -p /opt/docker-recipes/
-COPY AMD_dockerfile prescript.sh /opt/docker-recipes/
+COPY dockerfile prescript.sh /opt/docker-recipes/
