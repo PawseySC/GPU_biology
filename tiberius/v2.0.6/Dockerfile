@@ -23,7 +23,7 @@ ENV ROCM_RELEASE 7.0.2
 ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
 ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib
-ENV PIP_NO_CACHE_DIR=false
+ENV PIP_NO_CACHE_DIR=True
 
 RUN apt-get update --quiet && \
     apt-get install --no-install-recommends --yes --quiet \
