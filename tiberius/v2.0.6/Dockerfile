@@ -24,6 +24,7 @@ ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
 ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib
 ENV PIP_NO_CACHE_DIR=True
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update --quiet && \
     apt-get install --no-install-recommends --yes --quiet \
@@ -62,11 +63,21 @@ RUN apt-get update --quiet && \
     apt-get clean
 
 # Install cpanm + Perl modules (URI includes URI::Escape)
-RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
-    cpanm --notest DB_File && \
-    cpanm --notest URI
+#RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
+#    cpanm --notest DB_File && \
+#    cpanm --notest URI
 
-RUN pip install \
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv --system-site-packages $VIRTUAL_ENV
+ENV PATH=$VIRTUAL_ENV/bin:$PATH
+
+RUN curl -fsSL https://cpanmin.us -o /tmp/cpanm \
+ && perl /tmp/cpanm --notest App::cpanminus \
+ && rm -f /tmp/cpanm \
+ && cpanm --notest DB_File URI
+
+RUN pip install --ignore-installed "numpy>=1.26,<2.2" && \
+    pip install \
     setuptools \
     wheel \
     "hatchling>=1.26" \
