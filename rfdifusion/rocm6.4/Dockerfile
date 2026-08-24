@@ -14,7 +14,7 @@ RUN pip install -q --no-cache-dir \
     e3nn==0.5.6 \
     wandb==0.17.0 \
     decorator==5.1.0 \
-    hydra-core==1.3.2 \
+    hydra-core==1.3.4 \
     pyrsistent==0.19.3 \
     icecream \
     hiredis \
