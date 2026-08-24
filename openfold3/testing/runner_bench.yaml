@@ -1,0 +1,44 @@
+# Pinned inference config for container validation and benchmarking.
+#
+# Field names follow the OF3 reference benchmarking config:
+#   https://github.com/aqlaboratory/openfold-3-benchmarking/blob/main/runner.yaml
+# Keep this file frozen. If you change it, golden outputs are invalidated and
+# perf numbers stop being comparable across container builds.
+
+pl_trainer_args:
+  # The reference config sets flux_plugin: true for LLNL's Flux scheduler.
+  # Setonix is SLURM, so this must be false.
+  flux_plugin: false
+  # fp32 matches the reference benchmark config. Change this only for a
+  # deliberate precision-vs-throughput experiment, and never mid-comparison.
+  precision: 32-true
+
+experiment_settings:
+  # Always re-run, so a rebuild is actually retested rather than skipped.
+  skip_existing: false
+
+# NOTE: the inference seed is NOT set here. InferenceQuerySet carries
+# `seeds: [42]` at the top of each query JSON in inputs/ - that is the field
+# the predict path reads. Do not add a seed here and assume it applies.
+
+model_update:
+  presets:
+    - predict
+  custom:
+    architecture:
+      shared:
+        # 10 recycles is the OF3 technical report's standard inference setting.
+        num_recycles: 10
+      heads:
+        pae:
+          enabled: true
+
+output_writer_settings:
+  structure_format: cif
+
+data_module_args:
+  num_workers: 1
+
+# No template settings here on purpose: env.sh passes --use_templates=false so
+# the tests stay hermetic. Add a dataset_config_kwargs.template block if you
+# turn templates on, and re-freeze the golden outputs when you do.

@@ -1,0 +1,19 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "1ubq": {
+      "chains": [
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A"
+          ],
+          "sequence": "MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

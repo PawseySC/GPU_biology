@@ -1,0 +1,34 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "ubq_16mer": {
+      "chains": [
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I",
+            "J",
+            "K",
+            "L",
+            "M",
+            "N",
+            "O",
+            "P"
+          ],
+          "sequence": "MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

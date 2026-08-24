@@ -1,0 +1,33 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "ubq_8x_rna": {
+      "chains": [
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H"
+          ],
+          "sequence": "MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
+        },
+        {
+          "molecule_type": "rna",
+          "chain_ids": [
+            "Z"
+          ],
+          "sequence": "GGCACUUCGGUGCC"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

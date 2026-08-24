@@ -1,0 +1,24 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "mcl1_smiles": {
+      "chains": [
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A"
+          ],
+          "sequence": "GDDELYRQSLEIISRYLREQATGAKDTKPMGRSGATSRKALETLRRVGDGVQRNHETAFQGMLRKLDIKNEDDVKSLSRVMIHVFSDGVTNWGRIVTLISFGAFVAKHLKTINQESCIEPLAESITDVLVRTKRDWLVKQRGWDGFVEFFHVEDLEGG"
+        },
+        {
+          "molecule_type": "ligand",
+          "chain_ids": "Z",
+          "smiles": "CC(=O)OC1C[NH+]2CCC1CC2"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

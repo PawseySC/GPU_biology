@@ -1,0 +1,21 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "ptm_dna": {
+      "chains": [
+        {
+          "molecule_type": "dna",
+          "chain_ids": "A",
+          "sequence": "ATUCGTATTCGAT",
+          "non_canonical_residues": {
+            "3": "PSU",
+            "4": "5MC"
+          }
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

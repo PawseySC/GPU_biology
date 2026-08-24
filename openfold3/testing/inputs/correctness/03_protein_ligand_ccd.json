@@ -1,0 +1,26 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "mcl1_atp": {
+      "chains": [
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A"
+          ],
+          "sequence": "GDDELYRQSLEIISRYLREQATGAKDTKPMGRSGATSRKALETLRRVGDGVQRNHETAFQGMLRKLDIKNEDDVKSLSRVMIHVFSDGVTNWGRIVTLISFGAFVAKHLKTINQESCIEPLAESITDVLVRTKRDWLVKQRGWDGFVEFFHVEDLEGG"
+        },
+        {
+          "molecule_type": "ligand",
+          "chain_ids": [
+            "F"
+          ],
+          "ccd_codes": "ATP"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "seeds": [
+    42
+  ],
+  "queries": {
+    "rna_hairpin": {
+      "chains": [
+        {
+          "molecule_type": "rna",
+          "chain_ids": "A",
+          "sequence": "GGCACUUCGGUGCC"
+        }
+      ],
+      "use_msas": false
+    }
+  }
+}
