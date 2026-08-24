@@ -54,7 +54,8 @@ RUN pip install --no-cache-dir \
     docker-pycreds>=0.4.0 \
     "protobuf!=4.21.0,!=5.28.0,<6,>=3.19.0" \
     setuptools>=75.6.0 \
-    "gitpython!=3.1.29,>=1.0.0"
+    "gitpython!=3.1.29,>=1.0.0" \
+    hydra-core==1.3.4
     
 # Multiple labels in one instruction (preferred)
 LABEL Boltz_version="v1.0.0" \
