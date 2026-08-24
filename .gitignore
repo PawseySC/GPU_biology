@@ -7,3 +7,4 @@ boltz2/.DS_Store
 alphafold2/rocm6.2.4_proteinfold/testing/multimer_output/*
 alphafold2/rocm6.2.4_proteinfold/testing/monomerPTM_output/*
 alphafold2/rocm6.2.4_proteinfold/testing/output*
+tiberius/v2.0.6/vendor/
