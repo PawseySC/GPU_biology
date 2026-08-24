@@ -1,0 +1,49 @@
+# AlphaFold + TF CPU stack for the *Triton* variant of the ROCm 7.2.3 image.
+#
+# Differs from alphafold2/rocm7.2.3/requirements.txt only in the pins that
+# JAX 0.8.2 forces (jax-triton 0.3.1 requires jax>=0.8.2):
+#
+#   numpy  1.26.4  -> 2.0.2   (jax 0.8.2 requires numpy>=2.0;
+#                              tensorflow-cpu 2.18.1 requires numpy<2.1.0)
+#   scipy  >=1.12  -> >=1.13  (jax 0.8.2 requires scipy>=1.13)
+#   flax   ==0.9.0 -> >=0.10.4 (0.9.0 predates jax 0.8; nothing in AlphaFold
+#                              actually imports flax, so this is just kept
+#                              importable rather than removed)
+#
+# **Target system ROCm: 7.2.x (e.g. 7.2.3).** ROCm 7.x JAX support ships as
+# `jax-rocm7-plugin` / `jax-rocm7-pjrt`. Do *not* install `jax-rocm60-*` here.
+
+absl-py==1.0.0
+biopython==1.81
+dm-tree
+immutabledict
+ml-collections
+numpy==2.0.2
+opt-einsum
+pandas
+setuptools<82
+tensorflow-cpu==2.18.1
+mock
+tabulate
+msgpack
+chex
+dm-haiku
+# JAX 0.8.2 requires scipy>=1.13
+scipy>=1.13,<2
+flax>=0.10.4
+# JAX 0.8.2 requires ml_dtypes>=0.5; tensorflow-cpu 2.18.1 requires <1.0
+ml-dtypes>=0.5.0,<1
+Cython
+# Run the tests shipped by the Triton patch (tests/triton_tests/).
+pytest
+
+# --- JAX for ROCm 7.x. Installed from the ROCm/rocm-jax release assets in the
+#     Dockerfile, not from PyPI, so the four components stay on one line: ---
+# jax==0.8.2
+# jaxlib==0.8.2+rocm7.2.0
+# jax-rocm7-plugin==0.8.2+rocm7.2.0
+# jax-rocm7-pjrt==0.8.2+rocm7.2.0
+#
+# --- Triton stack (also installed in the Dockerfile): ---
+# triton==3.6.0
+# jax-triton==0.3.1   (installed --no-deps; its only real deps are jax+triton)
