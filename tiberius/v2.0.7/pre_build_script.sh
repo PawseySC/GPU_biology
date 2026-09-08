@@ -100,7 +100,6 @@ rel() {
 #   git ls-remote https://github.com/OWNER/REPO.git HEAD
 gh Gaius-Augustus/Tiberius             v2.0.7                                   Tiberius
 gh Gaius-Augustus/Augustus             220e5a63c0fd546563472ec6d1f9271faddaf569 Augustus
-gh TransDecoder/TransDecoder           66d47124da1e536db6d6891a0816fb019aa6049c TransDecoder
 gh tomasbruna/miniprothint             07cc5abe7fb83d4cbf98a3342e8423beefa81c99 miniprothint
 gh lh3/miniprot                        81f9b93481cec16622eff339fc998e4f38da344e miniprot
 gh tomasbruna/miniprot-boundary-scorer b0d103ef920dc11a567700c1b3dec022fea8de6d miniprot-boundary-scorer
@@ -110,6 +109,8 @@ rel https://github.com/gpertea/stringtie/releases/download/v3.0.3/stringtie-3.0.
 rel https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/3.3.0/sratoolkit.3.3.0-ubuntu64.tar.gz                 sratoolkit
 rel https://github.com/gpertea/gffread/releases/download/v0.12.7/gffread-0.12.7.Linux_x86_64.tar.gz   gffread
 rel https://github.com/lh3/minimap2/releases/download/v2.30/minimap2-2.30_x64-linux.tar.bz2           minimap2
+#rel https://github.com/TransDecoder/TransDecoder/archive/refs/tags/TransDecoder-v5.7.1.tar.gz         TransDecoder
+
 
 # ---------------------------------------------------------------- cleanup
 if [[ -z "${KEEP_ARCHIVES:-}" ]]; then

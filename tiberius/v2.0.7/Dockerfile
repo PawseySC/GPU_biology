@@ -1,8 +1,8 @@
 FROM quay.io/pawsey/rocm-mpich-base:rocm7.0.2-mpich3.4.3-ubuntu24.04
 
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
-      org.opencontainers.image.description="Tiberius v2.0.6 with ROCm7.0.2 support on Ubuntu 24.04 for AMD GPUs" \
-      org.opencontainers.image.source="https://github.com/PawseySC/GPU_biology/tree/main/tiberius/v2.0.6" \
+      org.opencontainers.image.description="Tiberius v2.0.7 with ROCm7.0.2 support on Ubuntu 24.04 for AMD GPUs" \
+      org.opencontainers.image.source="https://github.com/PawseySC/GPU_biology/tree/main/tiberius/v2.0.7" \
       org.opencontainers.image.name="tiberius_v2.0.7_rocm7.0.2_ubuntu24.04"
 
 # Use bash to support string substitution.
@@ -23,7 +23,8 @@ ENV ROCM_RELEASE 7.0.2
 ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
 ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib
-ENV PIP_NO_CACHE_DIR=True
+ENV PIP_NO_CACHE_DIR=1
+# ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update --quiet && \
     apt-get install --no-install-recommends --yes --quiet \
@@ -60,6 +61,13 @@ RUN apt-get update --quiet && \
     apt-get autoremove -y && \
     apt-get clean
 
+# ---- isolated Python environment --------------------------------------------
+ENV VIRTUAL_ENV=/opt/tiberius-venv
+RUN python3 -m venv ${VIRTUAL_ENV}
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+RUN pip install --upgrade pip
+
+
 # Install cpanm + Perl modules (URI includes URI::Escape)
 RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
     cpanm --notest DB_File && \
@@ -77,7 +85,13 @@ RUN pip install \
     scikit-learn \
     biopython \
     bcbio-gff \
-    requests && \
+    requests \
+    numpy \
+    biopython \
+    requests \
+    pydantic \
+    pandas && \
+    pip install "bricks2marble[tf]" --no-deps && \
     pip install tensorflow-rocm==2.19.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
     pip install --no-deps learnMSA
 
@@ -90,16 +104,12 @@ RUN cd Augustus && \
     make install
 
 RUN cd Tiberius && \
-    sed -i -E 's|"tensorflow\[and-cuda\][^"]*"|"tensorflow-rocm @ https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/tensorflow_rocm-2.19.1-cp312-cp312-manylinux_2_28_x86_64.whl"|' pyproject.toml && \
-    pip install . [source] && \
+    pip install . --no-deps && \
     chmod +x tiberius.py && \
     chmod +x tiberius/*py && \
     mkdir -p /opt/Tiberius/model_weights && \
     chmod -R 777 /opt/Tiberius/model_weights && \
     ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius
-
-RUN cd EvidencePipeline/EvidencePipeline/scripts && \
-    chmod +x *py
 
 RUN cd miniprot-boundary-scorer && make
 RUN cd miniprot && make
