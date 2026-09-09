@@ -47,12 +47,18 @@ RUN REL="https://github.com/ROCm/jax/releases/download/rocm-jax-v${JAX_VERSION}"
 COPY filter_af3_requirements.py apply_af3_patches.py /opt/af3-scripts/
 
 # ---- AlphaFold3 + dependencies ----------------------------------------------
+# The checkout lives at /app/alphafold, NOT /app/alphafold3: nf-core/proteinfold
+# hardcodes `python3 /app/alphafold/run_alphafold.py` in
+# modules/local/run_alphafold3/main.nf, so this path lets the pipeline drive the
+# image without overriding the module's command. If you rename it, update every
+# reference below -- especially the --af3-repo argument to apply_af3_patches.py,
+# which fails the build if it points at a directory that does not exist.
 WORKDIR /app
-RUN git clone https://github.com/google-deepmind/alphafold3.git && \
-    cd alphafold3 && git checkout ${AF3_COMMIT}
+RUN git clone https://github.com/google-deepmind/alphafold3.git /app/alphafold && \
+    cd /app/alphafold && git checkout ${AF3_COMMIT}
 
 # Drop the CUDA jax/nvidia pins (keep jax-triton/jaxtyping), then install AF3.
-RUN cd /app/alphafold3 && \
+RUN cd /app/alphafold && \
     python3 /opt/af3-scripts/filter_af3_requirements.py requirements.txt requirements.rocm.txt && \
     pip install --upgrade "cmake==3.28.3" ninja pybind11 scikit_build_core numpy && \
     pip install --no-build-isolation --no-deps -r requirements.rocm.txt --force-reinstall && \
@@ -68,7 +74,7 @@ RUN mkdir -p /hmmer_build && cd /hmmer_build && \
         echo "ca70d94fd0cf271bd7063423aabb116d42de533117343a9b27a65c17ff06fbf3  hmmer-3.4.tar.gz" | sha256sum -c - ; \
     fi && \
     tar zxf "hmmer-${HMMER_VERSION}.tar.gz" && \
-    cp /app/alphafold3/docker/jackhmmer_seq_limit.patch . && \
+    cp /app/alphafold/docker/jackhmmer_seq_limit.patch . && \
     patch -p0 < jackhmmer_seq_limit.patch && \
     cd "hmmer-${HMMER_VERSION}" && ./configure --prefix /hmmer && \
     make -j"$(nproc)" && make install && ( cd easel && make install ) && \
@@ -78,7 +84,7 @@ ENV PATH="/hmmer/bin:${PATH}"
 # ---- apply the AlphaFold3-on-AMD patches (run LAST: reinstalling tokamax
 #      would revert them) -----------------------------------------------------
 # Based on work from AMD in this repo: https://github.com/amd/HPCTrainingDock/tree/main/extras/scripts/alphafold3
-RUN python3 /opt/af3-scripts/apply_af3_patches.py --af3-repo /app/alphafold3
+RUN python3 /opt/af3-scripts/apply_af3_patches.py --af3-repo /app/alphafold
 
 # ---- runtime environment ----------------------------------------------------
 # NOTE: setting XLA_FLAGS from outside the container *replaces* this value, it
@@ -113,4 +119,4 @@ ENV XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_enable_command_buffe
 ENV XLA_PYTHON_CLIENT_PREALLOCATE="true"
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION="0.95"
 
-WORKDIR /app/alphafold3
+WORKDIR /app/alphafold

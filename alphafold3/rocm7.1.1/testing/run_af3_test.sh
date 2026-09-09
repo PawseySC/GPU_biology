@@ -15,7 +15,7 @@ CONTAINER=alphafold3_rocm7.1.1.sif
 
 srun -N 1 -n 1 -c 8 --gres=gpu:1 --gpus-per-task=1 \
 singularity exec ${CONTAINER} \
-      python3 /app/alphafold3/run_alphafold.py \
+      python3 /app/alphafold/run_alphafold.py \
       --model_dir=${MODEL_DIR} \
       --json_path=inputs/2pv7_data_${SLURM_ARRAY_TASK_ID}mer.json \
       --output_dir=af_output_${SLURM_ARRAY_TASK_ID} \
