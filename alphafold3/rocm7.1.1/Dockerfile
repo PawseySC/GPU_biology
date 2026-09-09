@@ -81,12 +81,35 @@ ENV PATH="/hmmer/bin:${PATH}"
 RUN python3 /opt/af3-scripts/apply_af3_patches.py --af3-repo /app/alphafold3
 
 # ---- runtime environment ----------------------------------------------------
+# NOTE: setting XLA_FLAGS from outside the container *replaces* this value, it
+# does not append to it. Always repeat these flags when adding your own.
+#
 # --xla_gpu_enable_triton_gemm=false is REQUIRED (the Triton GEMM emitter fails
 # on some AF3 matmul shapes with "Too small divisible part of the contracting
 # dimension"). The tokamax patches force Triton *flash-attention* on; disabling
 # Triton *GEMM* is the intended, complementary setting.
+#
+# --xla_disable_hlo_passes=priority-fusion is REQUIRED on gfx90a (MI250X).
+# XLA's priority-fusion pass emits a fused concatenate kernel
+# (input_concatenate_fusion_*) that accesses out of bounds, aborting the queue
+# with HSA_STATUS_ERROR_MEMORY_APERTURE_VIOLATION mid-inference. It is
+# shape-dependent, so it only shows up in some configurations -- notably at
+# AF3's default --num_diffusion_samples=5, while --num_diffusion_samples=1
+# runs clean, which is why smaller test cases pass. Verified on MI250X to be
+# both necessary and sufficient: disabling multi-output-fusion instead does
+# not help, and neither does re-enabling autotuning
+# (--xla_gpu_autotune_level=4), nor does --xla_gpu_mlir_emitter_level=0. Cost:
+# this is XLA:GPU's main fusion pass, so expect slower inference. Revisit if a
+# narrower workaround turns up.
+#
+# --xla_gpu_autotune_level=0 is deliberate. AF3 compiles its graph on every
+# invocation, so autotuning's compile-time cost is paid per job and is not
+# repaid within a single short inference: level 4 measures slower end to end
+# than level 0 here. If you want autotuning to pay off, first make compilation
+# results persist across jobs (JAX_COMPILATION_CACHE_DIR, and XLA's
+# --xla_gpu_per_fusion_autotune_cache_dir).
 ENV JAX_PLATFORMS="rocm,cpu"
-ENV XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_enable_command_buffer= --xla_gpu_autotune_level=0"
+ENV XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_enable_command_buffer= --xla_gpu_autotune_level=0 --xla_disable_hlo_passes=priority-fusion"
 ENV XLA_PYTHON_CLIENT_PREALLOCATE="true"
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION="0.95"
 
