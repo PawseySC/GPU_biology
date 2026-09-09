@@ -16,10 +16,25 @@ ENV PIP_NO_CACHE_DIR=true
 
 # ---- OS packages --------------
 RUN apt-get update && apt-get install -q -y --no-install-recommends \
-        build-essential git wget curl ca-certificates patch \
-        python3-dev python3-venv python3-pip \
-        pkg-config zlib1g-dev libtbb-dev \
-        miopen-hip hipfft hipsparse hipsolver hiprand rccl hipblas hipcub \
+        build-essential \
+        git \
+        wget \
+        curl \
+        ca-certificates patch \
+        python3-dev \
+        python3-venv \
+        python3-pip \
+        pkg-config \
+        zlib1g-dev \
+        libtbb-dev \
+        miopen-hip \
+        hipfft \
+        hipsparse \
+        hipsolver \
+        hiprand \
+        rccl \
+        hipblas \
+        hipcub \
         libdw1t64 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove --yes \
@@ -60,7 +75,7 @@ RUN git clone https://github.com/google-deepmind/alphafold3.git /app/alphafold &
 # Drop the CUDA jax/nvidia pins (keep jax-triton/jaxtyping), then install AF3.
 RUN cd /app/alphafold && \
     python3 /opt/af3-scripts/filter_af3_requirements.py requirements.txt requirements.rocm.txt && \
-    pip install --upgrade "cmake==3.28.3" ninja pybind11 scikit_build_core numpy && \
+    pip install --upgrade "cmake==3.28.3" ninja pybind11 scikit_build_core numpy jq && \
     pip install --no-build-isolation --no-deps -r requirements.rocm.txt --force-reinstall && \
     pip install -vvv --no-deps --force-reinstall --upgrade . && \
     pip install dm-haiku==0.0.16 --upgrade --no-deps --force-reinstall && \
