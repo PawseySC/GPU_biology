@@ -90,6 +90,7 @@ RUN pip install \
     biopython \
     requests \
     pydantic \
+    hidten \
     pandas && \
     pip install "bricks2marble[tf]" --no-deps && \
     pip install tensorflow-rocm==2.19.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
