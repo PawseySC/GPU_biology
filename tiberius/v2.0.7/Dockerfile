@@ -1,4 +1,5 @@
-FROM quay.io/pawsey/rocm-mpich-base:rocm7.0.2-mpich3.4.3-ubuntu24.04
+# Plain ROCm dev image: Tiberius does not need MPI.
+FROM rocm/dev-ubuntu-24.04:7.0.2
 
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="Tiberius v2.0.7 with ROCm7.0.2 support on Ubuntu 24.04 for AMD GPUs" \
@@ -45,8 +46,20 @@ RUN apt-get update --quiet && \
     perl \
     libdb-dev \
     zlib1g-dev \
-    ca-certificates \
     hisat2 \
+    curl \
+    ca-certificates \
+    python3-venv \
+    # ROCm libraries that tensorflow-rocm loads at runtime; the dev base image
+    # only ships the compiler and HIP runtime.
+    miopen-hip \
+    hipblas \
+    hipblaslt \
+    hipfft \
+    hiprand \
+    hipsolver \
+    hipsparse \
+    rccl \
     && \
     apt-get autoremove --yes && \
     apt-get clean && \
