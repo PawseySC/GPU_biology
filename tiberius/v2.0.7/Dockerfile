@@ -1,4 +1,4 @@
-FROM quay.io/pawsey/rocm-mpich-base:rocm7.0.2-mpich3.4.3-ubuntu24.04
+FROM rocm/dev-ubuntu-24.04:7.0.2
 
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
       org.opencontainers.image.description="Tiberius v2.0.7 with ROCm7.0.2 support on Ubuntu 24.04 for AMD GPUs" \
@@ -8,24 +8,16 @@ LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>
 # Use bash to support string substitution.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update --quiet \
-    && apt-get install --no-install-recommends --yes --quiet \
-        build-essential \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get autoremove --yes \
-    && apt-get clean
-
 WORKDIR /opt
 
 # ROCm environment
-ENV ROCM_RELEASE 7.0.2
-ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
-ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
-ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib
-ENV PIP_NO_CACHE_DIR=1
-# ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV ROCM_RELEASE=7.0.2
+ENV ROCM_PATH=/opt/rocm-$ROCM_RELEASE
+ENV PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROCM_PATH/lib \
+    PIP_NO_CACHE_DIR=1
 
+ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update --quiet && \
     apt-get install --no-install-recommends --yes --quiet \
     build-essential \
@@ -36,7 +28,6 @@ RUN apt-get update --quiet && \
     liblpsolve55-dev \
     libsqlite3-dev \
     libmysql++-dev \
-    libboost-iostreams-dev \
     libbamtools-dev \
     samtools \
     libhts-dev \
@@ -54,26 +45,51 @@ RUN apt-get update --quiet && \
     perl \
     libdb-dev \
     zlib1g-dev \
-    ca-certificates \
     hisat2 \
+    curl \
+    ca-certificates \
+    python3-venv \
+    miopen-hip \
+    hipblas \
+    hipblaslt \
+    hipfft \
+    hiprand \
+    hipsolver \
+    hipsparse \
+    rccl \
     && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get autoremove -y && \
-    apt-get clean
+    apt-get autoremove --yes && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install cpanm + Perl modules (URI includes URI::Escape)
+RUN curl -fsSL https://cpanmin.us -o /tmp/cpanm.pl && \
+    perl /tmp/cpanm.pl App::cpanminus && \
+    cpanm --notest DB_File URI && \
+    rm -rf /tmp/cpanm.pl /root/.cpanm
+
+COPY apply_keras_rocm_patch.py constraints.txt Dockerfile pre_build_script.sh /opt/docker-recipes/
+COPY vendor /opt
+
+# ---- Augustus ---------------------------------------------------------------
+RUN cd Augustus && \
+    make clean && \
+    make -j"$(nproc)" && \
+    make install
+
+# ---- miniprot + helpers -----------------------------------------------------
+RUN make -C miniprot -j"$(nproc)" && \
+    make -C miniprot-boundary-scorer -j"$(nproc)"
 
 # ---- isolated Python environment --------------------------------------------
 ENV VIRTUAL_ENV=/opt/tiberius-venv
-RUN python3 -m venv ${VIRTUAL_ENV}
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
-RUN pip install --upgrade pip
+RUN python3 -m venv ${VIRTUAL_ENV} && \
+    pip install --upgrade pip
 
-
-# Install cpanm + Perl modules (URI includes URI::Escape)
-RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
-    cpanm --notest DB_File && \
-    cpanm --notest URI
-
-RUN pip install \
+# Versions are pinned by constraints.txt (pip freeze of the working image).
+RUN C=/opt/docker-recipes/constraints.txt && \
+    pip install -c $C \
     setuptools \
     wheel \
     "hatchling>=1.26" \
@@ -87,35 +103,24 @@ RUN pip install \
     bcbio-gff \
     requests \
     numpy \
-    biopython \
-    requests \
     pydantic \
     hidten \
     pandas && \
-    pip install "bricks2marble[tf]" --no-deps && \
-    pip install tensorflow-rocm==2.19.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
-    pip install --no-deps learnMSA
+    pip install -c $C "bricks2marble[tf]" --no-deps && \
+    pip install -c $C tensorflow-rocm==2.19.1 keras==3.15.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
+    pip install -c $C --no-deps learnMSA
 
-COPY vendor /opt
-WORKDIR /opt
+# Keras 3 calls the cuDNN LSTM op batch-major, which ROCm MIOpen rejects
+# ("ROCm MIOpen only supports packed input output"). Patch it to time-major.
+RUN python /opt/docker-recipes/apply_keras_rocm_patch.py
 
-RUN cd Augustus && \
-    make clean && \
-    make && \
-    make install
-
+# ---- Tiberius ---------------------------------------------------------------
 RUN cd Tiberius && \
     pip install . --no-deps && \
-    chmod +x tiberius.py && \
-    chmod +x tiberius/*py && \
+    chmod +x tiberius.py tiberius/*py && \
     mkdir -p /opt/Tiberius/model_weights && \
     chmod -R 777 /opt/Tiberius/model_weights && \
-    ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius
+    ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius && \
+    rm -rf /opt/Tiberius/docs /opt/Tiberius/figures /opt/Tiberius/test_data
 
-RUN cd miniprot-boundary-scorer && make
-RUN cd miniprot && make
-
-ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/EvidencePipeline/EvidencePipeline/scripts/:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/hisat2-2.2.1/:/opt/stringtie-3.0.3.Linux_x86_64:/opt/sratoolkit.3.3.0-ubuntu64/bin/:/opt/gffread-0.12.7.Linux_x86_64
-
-RUN mkdir -p /opt/docker-recipes/
-COPY Dockerfile pre_build_script.sh /opt/docker-recipes/
+ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/stringtie:/opt/sratoolkit/bin:/opt/gffread:/opt/minimap2
