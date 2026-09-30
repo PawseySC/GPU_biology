@@ -8,24 +8,16 @@ LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>
 # Use bash to support string substitution.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update --quiet \
-    && apt-get install --no-install-recommends --yes --quiet \
-        build-essential \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get autoremove --yes \
-    && apt-get clean
-
 WORKDIR /opt
 
 # ROCm environment
-ENV ROCM_RELEASE 7.0.2
-ENV ROCM_PATH /opt/rocm-$ROCM_RELEASE
-ENV PATH $ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
-ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$ROCM_PATH/lib
-ENV PIP_NO_CACHE_DIR=1
-# ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV ROCM_RELEASE=7.0.2
+ENV ROCM_PATH=/opt/rocm-$ROCM_RELEASE
+ENV PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROCM_PATH/lib \
+    PIP_NO_CACHE_DIR=1
 
+ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update --quiet && \
     apt-get install --no-install-recommends --yes --quiet \
     build-essential \
@@ -36,7 +28,6 @@ RUN apt-get update --quiet && \
     liblpsolve55-dev \
     libsqlite3-dev \
     libmysql++-dev \
-    libboost-iostreams-dev \
     libbamtools-dev \
     samtools \
     libhts-dev \
@@ -57,23 +48,47 @@ RUN apt-get update --quiet && \
     ca-certificates \
     hisat2 \
     && \
-    rm -rf /var/lib/apt/lists/* && \
-    apt-get autoremove -y && \
-    apt-get clean
-
-# ---- isolated Python environment --------------------------------------------
-ENV VIRTUAL_ENV=/opt/tiberius-venv
-RUN python3 -m venv ${VIRTUAL_ENV}
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
-RUN pip install --upgrade pip
-
+    apt-get autoremove --yes && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install cpanm + Perl modules (URI includes URI::Escape)
 RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
-    cpanm --notest DB_File && \
-    cpanm --notest URI
+    cpanm --notest DB_File URI && \
+    rm -rf /root/.cpanm
 
-RUN pip install \
+# ---- Augustus ---------------------------------------------------------------
+# Each vendored tree is copied just before it is built, so changing one does
+# not invalidate the cached layers of the others.
+COPY vendor/Augustus /opt/Augustus
+RUN cd Augustus && \
+    make clean && \
+    make -j"$(nproc)" && \
+    make install
+
+# ---- miniprot + helpers -----------------------------------------------------
+COPY vendor/miniprot /opt/miniprot
+COPY vendor/miniprot-boundary-scorer /opt/miniprot-boundary-scorer
+RUN make -C miniprot -j"$(nproc)" && \
+    make -C miniprot-boundary-scorer -j"$(nproc)"
+
+# ---- prebuilt tools ---------------------------------------------------------
+COPY vendor/miniprothint /opt/miniprothint
+COPY vendor/stringtie /opt/stringtie
+COPY vendor/sratoolkit /opt/sratoolkit
+COPY vendor/gffread /opt/gffread
+COPY vendor/minimap2 /opt/minimap2
+
+# ---- isolated Python environment --------------------------------------------
+ENV VIRTUAL_ENV=/opt/tiberius-venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+RUN python3 -m venv ${VIRTUAL_ENV} && \
+    pip install --upgrade pip
+
+# Versions are pinned by constraints.txt (pip freeze of the working image).
+COPY constraints.txt /opt/docker-recipes/
+RUN C=/opt/docker-recipes/constraints.txt && \
+    pip install -c $C \
     setuptools \
     wheel \
     "hatchling>=1.26" \
@@ -87,34 +102,26 @@ RUN pip install \
     bcbio-gff \
     requests \
     numpy \
-    biopython \
-    requests \
     pydantic \
     pandas && \
-    pip install "bricks2marble[tf]" --no-deps && \
-    pip install tensorflow-rocm==2.19.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
-    pip install --no-deps learnMSA
+    pip install -c $C "bricks2marble[tf]" --no-deps && \
+    pip install -c $C tensorflow-rocm==2.19.1 keras==3.15.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
+    pip install -c $C --no-deps learnMSA
 
-COPY vendor /opt
-WORKDIR /opt
+# Keras 3 calls the cuDNN LSTM op batch-major, which ROCm MIOpen rejects
+# ("ROCm MIOpen only supports packed input output"). Patch it to time-major.
+COPY apply_keras_rocm_patch.py /opt/docker-recipes/
+RUN python /opt/docker-recipes/apply_keras_rocm_patch.py
 
-RUN cd Augustus && \
-    make clean && \
-    make && \
-    make install
-
+# ---- Tiberius ---------------------------------------------------------------
+COPY vendor/Tiberius /opt/Tiberius
 RUN cd Tiberius && \
     pip install . --no-deps && \
-    chmod +x tiberius.py && \
-    chmod +x tiberius/*py && \
+    chmod +x tiberius.py tiberius/*py && \
     mkdir -p /opt/Tiberius/model_weights && \
     chmod -R 777 /opt/Tiberius/model_weights && \
     ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius
 
-RUN cd miniprot-boundary-scorer && make
-RUN cd miniprot && make
+ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/stringtie:/opt/sratoolkit/bin:/opt/gffread:/opt/minimap2
 
-ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/EvidencePipeline/EvidencePipeline/scripts/:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/hisat2-2.2.1/:/opt/stringtie-3.0.3.Linux_x86_64:/opt/sratoolkit.3.3.0-ubuntu64/bin/:/opt/gffread-0.12.7.Linux_x86_64
-
-RUN mkdir -p /opt/docker-recipes/
 COPY Dockerfile pre_build_script.sh /opt/docker-recipes/
