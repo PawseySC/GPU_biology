@@ -21,6 +21,10 @@ grpcio==1.83.1
 h11==0.16.0
 h5py==3.16.0
 hatchling==1.32.0
+# hidten was not in the frozen image (it came from $PIPTARGET); pinned to the
+# latest PyPI release. Installed without its [tensorflow] extra, which would
+# pull in stock tensorflow alongside tensorflow-rocm.
+hidten==1.0.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.19

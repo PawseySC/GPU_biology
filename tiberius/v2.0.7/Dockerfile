@@ -103,6 +103,7 @@ RUN C=/opt/docker-recipes/constraints.txt && \
     requests \
     numpy \
     pydantic \
+    hidten \
     pandas && \
     pip install -c $C "bricks2marble[tf]" --no-deps && \
     pip install -c $C tensorflow-rocm==2.19.1 keras==3.15.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0.2/ --upgrade && \
