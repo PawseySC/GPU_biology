@@ -1,4 +1,3 @@
-# Plain ROCm dev image: Tiberius does not need MPI.
 FROM rocm/dev-ubuntu-24.04:7.0.2
 
 LABEL org.opencontainers.image.authors="Sarah Beecroft <sarah.beecroft@csiro.au>" \
@@ -50,8 +49,6 @@ RUN apt-get update --quiet && \
     curl \
     ca-certificates \
     python3-venv \
-    # ROCm libraries that tensorflow-rocm loads at runtime; the dev base image
-    # only ships the compiler and HIP runtime.
     miopen-hip \
     hipblas \
     hipblaslt \
@@ -66,31 +63,23 @@ RUN apt-get update --quiet && \
     rm -rf /var/lib/apt/lists/*
 
 # Install cpanm + Perl modules (URI includes URI::Escape)
-RUN curl -fsSL https://cpanmin.us | perl - App::cpanminus && \
+RUN curl -fsSL https://cpanmin.us -o /tmp/cpanm.pl && \
+    perl /tmp/cpanm.pl App::cpanminus && \
     cpanm --notest DB_File URI && \
-    rm -rf /root/.cpanm
+    rm -rf /tmp/cpanm.pl /root/.cpanm
+
+COPY apply_keras_rocm_patch.py constraints.txt Dockerfile pre_build_script.sh /opt/docker-recipes/
+COPY vendor /opt
 
 # ---- Augustus ---------------------------------------------------------------
-# Each vendored tree is copied just before it is built, so changing one does
-# not invalidate the cached layers of the others.
-COPY vendor/Augustus /opt/Augustus
 RUN cd Augustus && \
     make clean && \
     make -j"$(nproc)" && \
     make install
 
 # ---- miniprot + helpers -----------------------------------------------------
-COPY vendor/miniprot /opt/miniprot
-COPY vendor/miniprot-boundary-scorer /opt/miniprot-boundary-scorer
 RUN make -C miniprot -j"$(nproc)" && \
     make -C miniprot-boundary-scorer -j"$(nproc)"
-
-# ---- prebuilt tools ---------------------------------------------------------
-COPY vendor/miniprothint /opt/miniprothint
-COPY vendor/stringtie /opt/stringtie
-COPY vendor/sratoolkit /opt/sratoolkit
-COPY vendor/gffread /opt/gffread
-COPY vendor/minimap2 /opt/minimap2
 
 # ---- isolated Python environment --------------------------------------------
 ENV VIRTUAL_ENV=/opt/tiberius-venv
@@ -99,7 +88,6 @@ RUN python3 -m venv ${VIRTUAL_ENV} && \
     pip install --upgrade pip
 
 # Versions are pinned by constraints.txt (pip freeze of the working image).
-COPY constraints.txt /opt/docker-recipes/
 RUN C=/opt/docker-recipes/constraints.txt && \
     pip install -c $C \
     setuptools \
@@ -124,18 +112,15 @@ RUN C=/opt/docker-recipes/constraints.txt && \
 
 # Keras 3 calls the cuDNN LSTM op batch-major, which ROCm MIOpen rejects
 # ("ROCm MIOpen only supports packed input output"). Patch it to time-major.
-COPY apply_keras_rocm_patch.py /opt/docker-recipes/
 RUN python /opt/docker-recipes/apply_keras_rocm_patch.py
 
 # ---- Tiberius ---------------------------------------------------------------
-COPY vendor/Tiberius /opt/Tiberius
 RUN cd Tiberius && \
     pip install . --no-deps && \
     chmod +x tiberius.py tiberius/*py && \
     mkdir -p /opt/Tiberius/model_weights && \
     chmod -R 777 /opt/Tiberius/model_weights && \
-    ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius
+    ln -s /opt/Tiberius/tiberius.py /usr/local/bin/tiberius && \
+    rm -rf /opt/Tiberius/docs /opt/Tiberius/figures /opt/Tiberius/test_data
 
 ENV PATH=/usr/local/bin/:${PATH}:/opt/Augustus/bin/:/opt/Tiberius/tiberius/:/opt/Tiberius/:/opt/Tiberius/tiberius/scripts:/opt/miniprothint:/opt/miniprot:/opt/miniprot-boundary-scorer:/opt/stringtie:/opt/sratoolkit/bin:/opt/gffread:/opt/minimap2
-
-COPY Dockerfile pre_build_script.sh /opt/docker-recipes/

@@ -1,6 +1,4 @@
 # pip freeze of the working tiberius_v2.0.7_rocm7.0.2 image (2026-09-30).
-# Passed to every pip install in the Dockerfile with -c, so direct and
-# transitive dependencies resolve to these exact versions.
 absl-py==2.5.0
 annotated-types==0.8.0
 anyio==4.15.1
@@ -21,9 +19,6 @@ grpcio==1.83.1
 h11==0.16.0
 h5py==3.16.0
 hatchling==1.32.0
-# hidten was not in the frozen image (it came from $PIPTARGET); pinned to the
-# latest PyPI release. Installed without its [tensorflow] extra, which would
-# pull in stock tensorflow alongside tensorflow-rocm.
 hidten==1.0.0
 httpcore==1.0.9
 httpx==0.28.1
